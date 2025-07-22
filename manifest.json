@@ -11,12 +11,40 @@
     "default": {},
     "type": "object",
     "properties": {
-      "configurableResponse": {
-        "default": "Hello, world!",
-        "type": "string"
+      "globalConfigUpdate": {
+        "description": "Updates all price labels across all tasks based on `baseRateMultiplier` changes within the config file.",
+        "type": "object",
+        "properties": {
+          "excludeRepos": {
+            "examples": ["repo-name", "no-owner-required"],
+            "description": "List of repositories to exclude from being updated",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["excludeRepos"]
       },
-      "customStringsUrl": {
-        "type": "string"
+      "mode": {
+        "default": "full",
+        "description": "The mode for automatic labeling.",
+        "anyOf": [
+          {
+            "const": "full",
+            "type": "string"
+          },
+          {
+            "const": "partial",
+            "type": "string"
+          }
+        ]
+      },
+      "basePriceMultiplier": {
+        "examples": [1.5],
+        "default": 1,
+        "description": "The base price multiplier for all tasks",
+        "type": "number"
       }
     }
   }
