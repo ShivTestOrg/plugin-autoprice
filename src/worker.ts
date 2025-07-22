@@ -3,14 +3,14 @@ import { createPlugin } from "@ubiquity-os/plugin-sdk";
 import { Manifest } from "@ubiquity-os/plugin-sdk/manifest";
 import { ExecutionContext } from "hono";
 import manifest from "../manifest.json";
-import { runPlugin } from "./index";
-import { Env, envSchema, PluginSettings, pluginSettingsSchema, SupportedEvents } from "./types";
+import { AssistivePricingSettings, Env, envSchema, pluginSettingsSchema, SupportedEvents } from "./types";
+import { run } from "./run";
 
 export default {
   async fetch(request: Request, env: Env, executionCtx?: ExecutionContext) {
-    return createPlugin<PluginSettings, Env, null, SupportedEvents>(
+    return createPlugin<AssistivePricingSettings, Env, null, SupportedEvents>(
       (context) => {
-        return runPlugin(context);
+        return run(context);
       },
       manifest as Manifest,
       {
