@@ -7,7 +7,7 @@ export interface PriorityTimeEstimate {
 
 export interface PriorityTimeResponse {
   estimated_time: string;
-  priority_number: string;
+  priority: string;
 }
 
 export async function getPriorityTime(
@@ -37,7 +37,7 @@ export async function getPriorityTime(
     throw new Error("No data returned from Baseten API");
   }
   const time = data.estimated_time;
-  const priority = data.priority_number;
+  const priority = data.priority;
   console.log(data);
   if (!time) {
     throw new Error("No time returned from Baseten API");
