@@ -47,20 +47,6 @@ export async function isUserAdminOrBillingManager(context: Context, username?: s
   return false;
 }
 
-export async function listOrgRepos(context: Context) {
-  const org = context.payload.organization?.login;
-  if (!org) throw context.logger.error("No organization found in payload!", { payload: context.payload });
-
-  try {
-    const response = await context.octokit.rest.repos.listForOrg({
-      org,
-    });
-    return response.data.filter((repo) => !repo.archived && !repo.disabled && !context.config.globalConfigUpdate?.excludeRepos.includes(repo.name));
-  } catch (err) {
-    throw context.logger.error("Listing org repos failed!", { err });
-  }
-}
-
 export async function listRepoIssues(context: Context, owner: string, repo: string) {
   try {
     return await context.octokit.paginate(context.octokit.rest.issues.listForRepo, {

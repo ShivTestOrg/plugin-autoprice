@@ -1,4 +1,3 @@
-import { Label } from "../types/github";
 import { Context } from "../types/context";
 
 // cspell:disable
@@ -6,33 +5,6 @@ export const COLORS = { default: "ededed", price: "1f883d" };
 // cspell:enable
 
 const NO_REPO_OWNER = "No owner found in the repository!";
-
-export async function listLabelsForRepo(context: Context): Promise<Label[]> {
-  const { payload, octokit } = context;
-
-  const owner = payload.repository.owner?.login;
-  if (!owner) {
-    throw context.logger.error(NO_REPO_OWNER);
-  }
-  // we need to paginate because the devpool has hundreds of labels
-  const res = await octokit.paginate(octokit.rest.issues.listLabelsForRepo, {
-    owner,
-    repo: payload.repository.name,
-    per_page: 100,
-  });
-  context.logger.debug(`Fetching labels for repository ${payload.repository.html_url}`, {
-    owner,
-    repo: payload.repository.name,
-    labels: res.map((o) => o.name),
-  });
-  if (res.length > 0) {
-    // we'll hit a secondary rate limit if using the runner token
-    await new Promise((resolve) => setTimeout(resolve, 5000));
-    return res;
-  }
-
-  return [];
-}
 
 export async function createLabel(context: Context, name: string, labelType = "default" as keyof typeof COLORS, description?: string): Promise<void> {
   const payload = context.payload;
