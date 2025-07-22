@@ -38,8 +38,12 @@ export async function getPriorityTime(
   }
   const time = data.estimated_time;
   const priority = data.priority_number;
-  if (!time || !priority) {
-    throw new Error("No time or priority returned from Baseten API");
+  console.log(data);
+  if (!time) {
+    throw new Error("No time returned from Baseten API");
+  }
+  if (!priority) {
+    throw new Error("No priority returned from Basten API");
   }
   return {
     time: time,
