@@ -34181,7 +34181,7 @@ async function getPriorityTime(e, t, r, s) {
     throw new Error("No data returned from Baseten API");
   }
   const a = i.estimated_time;
-  const c = i.priority_number;
+  const c = i.priority;
   console.log(i);
   if (!a) {
     throw new Error("No time returned from Baseten API");
