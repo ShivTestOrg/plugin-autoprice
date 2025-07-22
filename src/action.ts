@@ -1,18 +1,20 @@
 import { createActionsPlugin } from "@ubiquity-os/plugin-sdk";
 import { LOG_LEVEL, LogLevel } from "@ubiquity-os/ubiquity-os-logger";
-import { runPlugin } from "./index";
-import { Env, envSchema, PluginSettings, pluginSettingsSchema, SupportedEvents } from "./types";
+import { run } from "./run";
+import { SupportedEvents } from "./types/context";
+import { Env, envSchema } from "./types/env";
+import { AssistivePricingSettings, pluginSettingsSchema } from "./types/plugin-input";
 
-export default createActionsPlugin<PluginSettings, Env, null, SupportedEvents>(
+createActionsPlugin<AssistivePricingSettings, Env, null, SupportedEvents>(
   (context) => {
-    return runPlugin(context);
+    return run(context);
   },
   {
-    logLevel: (process.env.LOG_LEVEL as LogLevel) || LOG_LEVEL.INFO,
-    settingsSchema: pluginSettingsSchema,
     envSchema: envSchema,
-    ...(process.env.KERNEL_PUBLIC_KEY && { kernelPublicKey: process.env.KERNEL_PUBLIC_KEY }),
     postCommentOnError: true,
+    settingsSchema: pluginSettingsSchema,
+    logLevel: (process.env.LOG_LEVEL as LogLevel) || LOG_LEVEL.INFO,
+    kernelPublicKey: process.env.KERNEL_PUBLIC_KEY,
     bypassSignatureVerification: process.env.NODE_ENV === "local",
   }
-);
+).catch(console.error);

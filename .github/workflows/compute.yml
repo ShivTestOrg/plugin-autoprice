@@ -33,6 +33,8 @@ jobs:
       LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'info' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      BASETEN_API_KEY: ${{secrets.BASETEN_API_KEY}}
+      BASETEN_API_URL: ${{secrets.BASETEN_API_URL}}
 
     steps:
       - uses: actions/checkout@v4

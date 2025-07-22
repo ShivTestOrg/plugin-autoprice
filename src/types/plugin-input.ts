@@ -1,18 +1,31 @@
 import { StaticDecode, Type as T } from "@sinclair/typebox";
 
-/**
- * This should contain the properties of the bot config
- * that are required for the plugin to function.
- *
- * The kernel will extract those and pass them to the plugin,
- * which are built into the context object from setup().
- */
 export const pluginSettingsSchema = T.Object(
   {
-    configurableResponse: T.String({ default: "Hello, world!" }),
-    customStringsUrl: T.Optional(T.String()),
+    globalConfigUpdate: T.Optional(
+      T.Object(
+        {
+          excludeRepos: T.Array(T.String(), {
+            examples: ["repo-name", "no-owner-required"],
+            description: "List of repositories to exclude from being updated",
+          }),
+        },
+        { description: "Updates all price labels across all tasks based on `baseRateMultiplier` changes within the config file." }
+      )
+    ),
+    mode: T.Enum(
+      {
+        full: "full", // Estimate both time and priority
+        partial: "partial", // Expects either time or priority label to be present
+      },
+      {
+        default: "full",
+        description: "The mode for automatic labeling.",
+      }
+    ),
+    basePriceMultiplier: T.Number({ examples: [1.5], default: 1, description: "The base price multiplier for all tasks" }),
   },
   { default: {} }
 );
 
-export type PluginSettings = StaticDecode<typeof pluginSettingsSchema>;
+export type AssistivePricingSettings = StaticDecode<typeof pluginSettingsSchema>;
