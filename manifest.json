@@ -21,19 +21,22 @@
         },
         "required": ["excludeRepos"]
       },
-      "mode": {
-        "default": "full",
-        "description": "The mode for automatic labeling.",
-        "anyOf": [
-          {
-            "const": "full",
-            "type": "string"
-          },
-          {
-            "const": "partial",
-            "type": "string"
-          }
-        ]
+      "maxSimilarIssues": {
+        "examples": [1, 5],
+        "default": 5,
+        "description": "Maximum number of similar issues for modifications.",
+        "type": "integer"
+      },
+      "elevatedPriorityLabel": {
+        "default": "Boosted",
+        "description": "Label Name to identify boosted priority issues,",
+        "type": "string"
+      },
+      "priorityMultiplier": {
+        "examples": [1.5, 1.2, 1.1],
+        "default": 1.1,
+        "description": "Multiplier applied to prioritize similar issues.",
+        "type": "integer"
       },
       "basePriceMultiplier": {
         "examples": [1.5],
