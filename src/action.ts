@@ -4,10 +4,14 @@ import { run } from "./run";
 import { SupportedEvents } from "./types/context";
 import { Env, envSchema } from "./types/env";
 import { AssistivePricingSettings, pluginSettingsSchema } from "./types/plugin-input";
+import { createAdapters } from "./adapters";
 
 createActionsPlugin<AssistivePricingSettings, Env, null, SupportedEvents>(
   (context) => {
-    return run(context);
+    return run({
+      ...context,
+      adapters: {} as ReturnType<typeof createAdapters>,
+    });
   },
   {
     envSchema: envSchema,

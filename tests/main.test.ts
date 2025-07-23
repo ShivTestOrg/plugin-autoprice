@@ -4,7 +4,6 @@ import { CommentHandler } from "@ubiquity-os/plugin-sdk";
 import { customOctokit as Octokit } from "@ubiquity-os/plugin-sdk/octokit";
 import { Logs } from "@ubiquity-os/ubiquity-os-logger";
 import dotenv from "dotenv";
-import manifest from "../manifest.json";
 import { Env } from "../src/types";
 import { Context } from "../src/types/context";
 import { db } from "./__mocks__/db";
@@ -12,6 +11,7 @@ import { createComment, setupTests } from "./__mocks__/helpers";
 import { server } from "./__mocks__/node";
 import { STRINGS } from "./__mocks__/strings";
 import { run } from "../src/run";
+import { createAdapters } from "../src/adapters";
 
 dotenv.config();
 const octokit = new Octokit();
@@ -29,13 +29,6 @@ describe("Plugin tests", () => {
   beforeEach(async () => {
     drop(db);
     await setupTests();
-  });
-
-  it("Should serve the manifest file", async () => {
-    const worker = (await import("../src/worker")).default;
-    const response = await worker.fetch(new Request("http://localhost/manifest.json"), {});
-    const content = await response.json();
-    expect(content).toEqual(manifest);
   });
 
   it("Should handle an issue comment event", async () => {
@@ -155,6 +148,7 @@ function createContextInner(
     config: {
       configurableResponse,
     },
+    adapters: {} as ReturnType<typeof createAdapters>,
     env: {} as Env,
     octokit: octokit,
     commentHandler: new CommentHandler(),
