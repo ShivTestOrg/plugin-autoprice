@@ -1,7 +1,7 @@
 {
-  "name": "ts-template",
+  "name": "plugin-autoprice",
   "description": "ts-template for UbiquityOS plugins.",
-  "ubiquity:listeners": ["issues.opened", "issues.labeled", "issues.unlabeled", "label.edited"],
+  "ubiquity:listeners": ["issues.opened", "issues.labeled", "issues.unlabeled", "issues.edited", "issue_comment.created"],
   "configuration": {
     "default": {},
     "type": "object",

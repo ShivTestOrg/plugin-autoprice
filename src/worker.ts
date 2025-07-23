@@ -5,12 +5,16 @@ import { ExecutionContext } from "hono";
 import manifest from "../manifest.json";
 import { AssistivePricingSettings, Env, envSchema, pluginSettingsSchema, SupportedEvents } from "./types";
 import { run } from "./run";
+import { createAdapters } from "./adapters";
 
 export default {
   async fetch(request: Request, env: Env, executionCtx?: ExecutionContext) {
     return createPlugin<AssistivePricingSettings, Env, null, SupportedEvents>(
       (context) => {
-        return run(context);
+        return run({
+          ...context,
+          adapters: {} as ReturnType<typeof createAdapters>,
+        });
       },
       manifest as Manifest,
       {

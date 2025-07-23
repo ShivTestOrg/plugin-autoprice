@@ -1,4 +1,6 @@
 import { Context } from "../types/context";
+import { GraphQlFetchPriorities } from "../types/github";
+import { FetchedPriorities } from "../types/label";
 
 // cspell:disable
 export const COLORS = { default: "ededed", price: "1f883d" };
@@ -60,6 +62,65 @@ export async function clearAllPriceLabelsOnIssue(context: Context) {
     }
   }
 }
+
+export async function getCurrentPriorities(context: Context, issueIds: string[]): Promise<FetchedPriorities[]> {
+  const results: FetchedPriorities[] = [];
+
+  for (const issueId of issueIds) {
+    try {
+      const result = await context.octokit.graphql<GraphQlFetchPriorities>(
+        /* GraphQL */
+        `
+          query ($id: ID!) {
+            node(id: $id) {
+              ... on Issue {
+                title
+                number
+                repository {
+                  name
+                  number
+                  owner {
+                    login
+                  }
+                }
+                labels(first: 100) {
+                  nodes {
+                    name
+                  }
+                }
+              }
+            }
+          }
+        `,
+        { id: issueId }
+      );
+
+      const issueNode = result.node;
+      if (issueNode) {
+        const labels = issueNode.labels?.nodes ?? [];
+        const priorityLabel = labels.find((label: { name: string }) => /^Priority: /i.test(label.name));
+        results.push({
+          issueId,
+          priority: priorityLabel ? priorityLabel.name : "0",
+          title: issueNode.title ?? null,
+          issueNumber: parseInt(issueNode.number) ?? 0,
+          repository: issueNode?.repository
+            ? {
+                name: issueNode.repository.name,
+                owner: { login: issueNode.repository.owner.login },
+              }
+            : null,
+          labels,
+        });
+      }
+    } catch (err) {
+      context.logger.error("Failed to fetch current priority label", { issueId, err });
+    }
+  }
+
+  return results;
+}
+
 export async function addLabelToIssue(context: Context, labelName: string) {
   const payload = context.payload;
   if (!("issue" in payload) || !payload.issue) {
@@ -78,17 +139,25 @@ export async function addLabelToIssue(context: Context, labelName: string) {
   }
 }
 
-export async function removeLabelFromIssue(context: Context, labelName: string) {
-  const payload = context.payload;
-  if (!("issue" in payload) || !payload.issue) {
-    return;
-  }
-
+export async function unassignLabelFromIssue(context: Context, owner: string, repo: string, issueNumber: number, labelName: string) {
   try {
     await context.octokit.rest.issues.removeLabel({
-      owner: payload.repository.owner.login,
-      repo: payload.repository.name,
-      issue_number: payload.issue.number,
+      owner,
+      repo,
+      issue_number: issueNumber,
+      name: labelName,
+    });
+  } catch (err: unknown) {
+    throw context.logger.error("Removing a label from an issue failed!", { err });
+  }
+}
+
+export async function assignLabelToIssue(context: Context, owner: string, repo: string, issueNumber: number, labelName: string) {
+  try {
+    await context.octokit.rest.issues.addLabels({
+      owner,
+      repo,
+      issue_number: issueNumber,
       name: labelName,
     });
   } catch (err: unknown) {

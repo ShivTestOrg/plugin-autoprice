@@ -1,14 +1,12 @@
 import { addLabelToIssue, clearAllPriceLabelsOnIssue, createLabel } from "../shared/label";
-import { handlePermissionCheck } from "../shared/permissions";
 import { Context } from "../types/context";
-import { isIssueLabelEvent } from "../types/typeguards";
 import { convertHoursLabel, getPricing, getPriorityTime, PriorityTimeEstimate } from "./get-priority-time";
 interface PricingResult {
   timeLabelValue: number;
   priorityLabel: string;
 }
 
-export async function autoPricingHandler(context: Context<"issues.opened">): Promise<void> {
+export async function onIssueCreatePricingHandler(context: Context<"issues.opened">): Promise<void> {
   const issue = getIssueFromPayload(context);
   if (!issue) {
     throw context.logger.error("No issue found in the payload.");
@@ -19,11 +17,7 @@ export async function autoPricingHandler(context: Context<"issues.opened">): Pro
   await setPrice(context, pricingResult);
 }
 
-export async function onLabelChangeAiEstimation(context: Context<"issues.edited">) {
-  if (!isIssueLabelEvent(context)) {
-    return;
-  }
-  await handlePermissionCheck(context);
+export async function onIssueEditPricingHandler(context: Context<"issues.edited">) {
   const { label, sender } = context.payload;
   if (!label || ignoreLabelChange(context, sender, label.name)) return;
 
@@ -101,15 +95,6 @@ function ignoreLabelChange(context: Context, sender: Context["payload"]["sender"
 }
 
 function getIssueFromPayload(context: Context) {
-  const eventName = context.eventName;
-  if (eventName === "issues.labeled" || eventName === "issues.unlabeled") {
-    if (!isIssueLabelEvent(context)) {
-      context.logger.debug("Not an issue label event, skipping.");
-      return null;
-    }
-    return context.payload.issue;
-  }
-
   if ("issue" in context.payload && context.payload.issue) {
     return context.payload.issue;
   }

@@ -6,3 +6,21 @@ export enum UserType {
   User = "User",
   Bot = "Bot",
 }
+
+export type GraphQlFetchPriorities = {
+  node?: {
+    title?: string;
+    number: string;
+    repository?: {
+      name: string;
+      owner: {
+        login: string;
+      };
+    };
+    labels?: {
+      nodes: {
+        name: string;
+      }[];
+    };
+  };
+};

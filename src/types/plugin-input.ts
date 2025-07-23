@@ -13,16 +13,20 @@ export const pluginSettingsSchema = T.Object(
         { description: "Updates all price labels across all tasks based on `baseRateMultiplier` changes within the config file." }
       )
     ),
-    mode: T.Enum(
-      {
-        full: "full", // Estimate both time and priority
-        partial: "partial", // Expects either time or priority label to be present
-      },
-      {
-        default: "full",
-        description: "The mode for automatic labeling.",
-      }
-    ),
+    maxSimilarIssues: T.Integer({
+      examples: [1, 5],
+      default: 5,
+      description: "Maximum number of similar issues for modifications.",
+    }),
+    elevatedPriorityLabel: T.String({
+      default: "Boosted",
+      description: "Label Name to identify boosted priority issues,",
+    }),
+    priorityMultiplier: T.Integer({
+      examples: [1.5, 1.2, 1.1],
+      default: 1.1,
+      description: "Multiplier applied to prioritize similar issues.",
+    }),
     basePriceMultiplier: T.Number({ examples: [1.5], default: 1, description: "The base price multiplier for all tasks" }),
   },
   { default: {} }

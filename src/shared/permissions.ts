@@ -1,10 +1,9 @@
 import { Context } from "../types/context";
 import { UserType } from "../types/github";
-import { isIssueLabelEvent } from "../types/typeguards";
 import { isUserAdminOrBillingManager } from "./issue";
 
-export async function labelAccessPermissionsCheck(context: Context) {
-  if (!isIssueLabelEvent(context)) {
+export async function labelAccessPermissionsCheck(context: Context<"issues.unlabeled">) {
+  if (context.eventName !== "issues.unlabeled") {
     context.logger.debug("Not an issue event");
     return false;
   }
@@ -36,10 +35,24 @@ export async function labelAccessPermissionsCheck(context: Context) {
   return false;
 }
 
-export async function handlePermissionCheck(context: Context): Promise<boolean> {
-  const hasPermission = await labelAccessPermissionsCheck(context);
-  if (!hasPermission && context.eventName === "issues.labeled" && context.payload.sender?.type !== "Bot") {
-    await context.commentHandler.postComment(context, context.logger.warn("You are not allowed to set labels."));
+export async function handlePermissionCheck(context: Context<"issues.unlabeled">): Promise<boolean> {
+  const hasPermission = await labelAccessPermissionsCheck(context as Context<"issues.unlabeled">);
+  if (!hasPermission && context.eventName === "issues.unlabeled" && context.payload.sender?.type !== "Bot") {
+    await context.commentHandler.postComment(context, context.logger.warn("You are not allowed to remove labels."));
+
+    const labelName = context.payload.label?.name;
+    const issueNumber = context.payload.issue?.number;
+    const owner = context.payload.repository.owner.login;
+    const repo = context.payload.repository.name;
+
+    if (labelName && issueNumber && owner && repo) {
+      await context.octokit.rest.issues.addLabels({
+        owner,
+        repo,
+        issue_number: issueNumber,
+        labels: [labelName],
+      });
+    }
   }
   return hasPermission;
 }
