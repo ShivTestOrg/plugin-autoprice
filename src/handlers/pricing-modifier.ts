@@ -1,63 +1,115 @@
-import { IssueSimilaritySearchResult } from "../adapters/supabase/helpers/issues";
+import { addCommentToIssue } from "../shared/comment";
 import { assignLabelToIssue, getCurrentPriorities, unassignLabelFromIssue } from "../shared/label";
 import { Context } from "../types";
+import { FetchedPriorities } from "../types/label";
 import { onIssueEditPricingHandler } from "./auto-price";
 
-// Boost similar issues
-export async function boostPrioritySimilarIssues(context: Context<"issues.opened" | "issues.edited">) {
-  const {
-    payload,
-    adapters: { supabase },
-    logger,
-    config,
-  } = context;
-  const issueContent = payload.issue.title + payload.issue.body;
-  //First find similar issues
-  const similarIssues = await supabase.issue.findSimilarIssuesToMatch({
-    markdown: issueContent,
-    threshold: config.maxSimilarIssues,
-    currentId: payload.issue.node_id,
-  });
-  logger.debug(`Found ${similarIssues?.length} similar issues.`, { similarIssues: similarIssues });
-  if (similarIssues && similarIssues?.length > 0) {
-    similarIssues.sort((a: IssueSimilaritySearchResult, b: IssueSimilaritySearchResult) => b.similarity - a.similarity);
-    //Modify all the issue's priority by the multiplier
-    const issues = await getCurrentPriorities(
-      context,
-      similarIssues.map((issue) => issue.issue_id)
-    );
-    // Boost
-    issues.forEach(async (issue) => {
-      const boostedPriority = parseInt(issue.priority) * config.priorityMultiplier;
-      const priorityLabel = issue.labels.find((label: { name: string }) => /^Priority: /i.test(label.name));
-      //Check if it already has the elevated priority label
-      const isElevatedPriorityLabelPresent = issue.labels.find((label: { name: string }) => label.name == config.elevatedPriorityLabel);
-      if (priorityLabel) {
-        try {
-          //@ts-expect-error expected error issue with login
-          await unassignLabelFromIssue(context, issue.repository?.owner.login, issue.repository?.name, issue.issueNumber, priorityLabel.name);
-          //Add updated priority
-          const updatedPriorityLabel = `Priority: ${Math.max(0, Math.min(5, boostedPriority))}`;
-          //@ts-expect-error expected error issue with login
-          await assignLabelToIssue(context, issue.repository?.owner.login, issue.repository?.name, issue.issueNumber, updatedPriorityLabel);
-          if (!isElevatedPriorityLabelPresent) {
-            //@ts-expect-error expected error issue with login
-            await assignLabelToIssue(context, issue.repository?.owner.login, issue.repository?.name, issue.issueNumber, config.elevatedPriorityLabel);
-          }
-          logger.info(`Boosted priority for issue #${issue.issueNumber} to ${Math.max(0, Math.min(5, boostedPriority))} and assigned elevated label.`);
-        } catch (e) {
-          logger.error("Failed to update priority or assign elevated label", { err: e, issueNumber: issue.issueNumber });
-        }
-      }
-    });
+async function applyPriorityBoost(context: Context, issues: FetchedPriorities[]) {
+  const { logger, config } = context;
+
+  for (const issue of issues) {
+    const boostedPriority = Math.max(0, Math.min(5, parseInt(issue.priority) * config.priorityMultiplier));
+    const priorityLabel = issue.labels.find((label) => /^Priority: /i.test(label.name));
+    const hasElevatedLabel = issue.labels.some((label) => label.name === config.elevatedPriorityLabel);
+    const { owner, name: repo } = issue.repository || {};
+    const issueNumber = issue.issueNumber;
+
+    if (priorityLabel) {
+      await unassignLabelFromIssue(context, owner.login, repo, issueNumber, priorityLabel.name);
+    }
+    await assignLabelToIssue(context, owner.login, repo, issueNumber, `Priority: ${boostedPriority}`);
+    if (!hasElevatedLabel) {
+      await assignLabelToIssue(context, owner.login, repo, issueNumber, config.elevatedPriorityLabel);
+    }
+    logger.debug(`Boosted priority for issue #${issueNumber} to ${boostedPriority} and assigned elevated label.`);
+  }
+
+  if (config.priorityMultiplierDebug) {
+    let debugComment = `Priority boost applied to similar issues (multiplier: ${config.priorityMultiplier}):`;
+    for (const issue of issues) {
+      const boostedPriority = Math.max(0, Math.min(5, Math.max(1, parseInt(issue.priority)) * config.priorityMultiplier));
+      debugComment += `\n- #${issue.issueNumber} (${issue.repository?.owner.login}/${issue.repository?.name}): ${boostedPriority}`;
+    }
+    await addCommentToIssue(context, debugComment);
   }
 }
 
-// Revert Boost to normal when "Boosted" label is removed
+async function findAndBoostIssues(context: Context, markdown: string, currentId: string) {
+  const {
+    logger,
+    config,
+    adapters: { supabase },
+    payload,
+  } = context;
+
+  const similarIssues = await supabase.issue.findSimilarIssuesToMatch({
+    markdown,
+    threshold: 0.7,
+    currentId: currentId,
+    count: config.maxSimilarIssues,
+  });
+
+  logger.info(`Found ${similarIssues?.length} similar issues.`, { similarIssues });
+  if (!similarIssues?.length) {
+    return null;
+  }
+
+  similarIssues.sort((a, b) => b.similarity - a.similarity);
+
+  let issues = await getCurrentPriorities(
+    context,
+    similarIssues.map((issue) => issue.issue_id)
+  );
+  logger.info(`Fetched ${issues.length} issues with current priorities.`);
+  if (!config.crossLinkedIssueBoost) {
+    const { login: currentOwner } = payload.repository.owner;
+    const { name: currentRepo } = payload.repository;
+    issues = issues.filter((issue) => issue.repository?.owner.login === currentOwner && issue.repository?.name === currentRepo);
+  }
+
+  if (issues.length > 0) {
+    await applyPriorityBoost(context, issues);
+  }
+  return issues;
+}
+
+export async function boostPrioritySimilarIssues(context: Context<"issues.opened" | "issues.edited">) {
+  const issueContent = context.payload.issue.title + context.payload.issue.body;
+  await findAndBoostIssues(context, issueContent, context.payload.issue.node_id);
+}
+
+export async function handleBoostComment(context: Context<"issue_comment.created">) {
+  const { command, payload } = context;
+  let comment: string | undefined;
+
+  if (payload.comment.user?.type === "Bot") {
+    return;
+  }
+
+  if (command?.name === "boost") {
+    comment = command.parameters.comment;
+  } else if (payload.comment.body.trim().startsWith("/boost")) {
+    const trimmed = payload.comment.body.trim().replace("/boost", "").trim();
+    if (trimmed) {
+      comment = trimmed;
+    }
+  }
+
+  if (!comment) {
+    await addCommentToIssue(context, "No boost comment provided.");
+    return;
+  }
+
+  const boostedIssues = await findAndBoostIssues(context, comment, payload.issue.node_id);
+
+  if (!boostedIssues) {
+    await addCommentToIssue(context, "No similar issues found to boost.");
+  }
+}
+
 export async function revertPriorityToNormal(context: Context<"issues.unlabeled">) {
-  //check if the current label being removed is con
   const currentLabel = context.payload.label?.name;
-  if (currentLabel == context.config.elevatedPriorityLabel) {
+  if (currentLabel === context.config.elevatedPriorityLabel) {
     await onIssueEditPricingHandler(context as unknown as Context<"issues.edited">);
   }
 }

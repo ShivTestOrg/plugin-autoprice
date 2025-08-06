@@ -1,3 +1,4 @@
+import { PRIORITY_REGEX, TIME_REGEX } from "../handlers/auto-price";
 import { Context } from "../types/context";
 import { GraphQlFetchPriorities } from "../types/github";
 import { FetchedPriorities } from "../types/label";
@@ -40,10 +41,19 @@ export async function clearAllPriceLabelsOnIssue(context: Context) {
 
   const labels = payload.issue.labels;
   if (!labels) return;
-  const issuePriceLabels = labels.filter((label) => label.name.toString().startsWith("Price: ") || label.name.toString().startsWith("Pricing: "));
-  if (!issuePriceLabels.length) return;
 
-  for (const label of issuePriceLabels) {
+  // Collect all labels to remove: Price, Pricing, Priority, Time
+  const labelsToRemove = labels.filter(
+    (label) =>
+      label.name.toString().startsWith("Price: ") ||
+      label.name.toString().startsWith("Pricing: ") ||
+      label.name.toString().startsWith("Priority: ") ||
+      label.name.toString().startsWith("Time: ")
+  );
+
+  if (!labelsToRemove.length) return;
+
+  for (const label of labelsToRemove) {
     try {
       await context.octokit.rest.issues.removeLabel({
         owner: payload.repository.owner.login,
@@ -52,7 +62,7 @@ export async function clearAllPriceLabelsOnIssue(context: Context) {
         name: label.name,
       });
     } catch (err) {
-      // Sometimes labels are out of sync or the price was manually added, which is safe to ignore since we are
+      // Sometimes labels are out of sync or the label was manually added, which is safe to ignore since we are
       // updating all the labels.
       if (err && typeof err === "object" && "status" in err && err.status === 404) {
         context.logger.error(`Label [${label.name}] not found on issue ${payload.issue.html_url}, ignoring.`, { err });
@@ -62,13 +72,12 @@ export async function clearAllPriceLabelsOnIssue(context: Context) {
     }
   }
 }
-
 export async function getCurrentPriorities(context: Context, issueIds: string[]): Promise<FetchedPriorities[]> {
   const results: FetchedPriorities[] = [];
 
   for (const issueId of issueIds) {
     try {
-      const result = await context.octokit.graphql<GraphQlFetchPriorities>(
+      const { node } = await context.octokit.graphql<GraphQlFetchPriorities>(
         /* GraphQL */
         `
           query ($id: ID!) {
@@ -76,9 +85,9 @@ export async function getCurrentPriorities(context: Context, issueIds: string[])
               ... on Issue {
                 title
                 number
+                state
                 repository {
                   name
-                  number
                   owner {
                     login
                   }
@@ -94,25 +103,23 @@ export async function getCurrentPriorities(context: Context, issueIds: string[])
         `,
         { id: issueId }
       );
+      if (!node || node.state.toLowerCase() !== "open" || !node.repository) continue;
 
-      const issueNode = result.node;
-      if (issueNode) {
-        const labels = issueNode.labels?.nodes ?? [];
-        const priorityLabel = labels.find((label: { name: string }) => /^Priority: /i.test(label.name));
-        results.push({
-          issueId,
-          priority: priorityLabel ? priorityLabel.name : "0",
-          title: issueNode.title ?? null,
-          issueNumber: parseInt(issueNode.number) ?? 0,
-          repository: issueNode?.repository
-            ? {
-                name: issueNode.repository.name,
-                owner: { login: issueNode.repository.owner.login },
-              }
-            : null,
-          labels,
-        });
-      }
+      const labels = node.labels?.nodes ?? [];
+      const priorityLabel = labels.find((l) => PRIORITY_REGEX.test(l.name));
+      const priorityValue = priorityLabel?.name.match(PRIORITY_REGEX)?.[1] ?? "1";
+
+      results.push({
+        issueId,
+        priority: priorityValue,
+        title: node.title ?? null,
+        issueNumber: Number(node.number) || 0,
+        repository: {
+          name: node.repository.name,
+          owner: { login: node.repository.owner.login },
+        },
+        labels,
+      });
     } catch (err) {
       context.logger.error("Failed to fetch current priority label", { issueId, err });
     }
@@ -158,9 +165,39 @@ export async function assignLabelToIssue(context: Context, owner: string, repo: 
       owner,
       repo,
       issue_number: issueNumber,
-      name: labelName,
+      labels: [labelName],
     });
   } catch (err: unknown) {
-    throw context.logger.error("Removing a label from an issue failed!", { err });
+    throw context.logger.error("Adding a label from an issue failed!", { err });
+  }
+}
+
+export function findLabels(labels: { name: string }[], regex: RegExp): { name: string } | undefined {
+  return labels.find((label) => regex.test(label.name));
+}
+export async function removeAllTimeLabels(context: Context, labels: { name: string }[]) {
+  const timeLabels = labels.filter((label) => TIME_REGEX.test(label.name));
+  if (timeLabels.length === 0) return;
+
+  for (const label of timeLabels) {
+    await unassignLabelFromIssue(context, context.payload.repository.owner.login, context.payload.repository.name, context.payload.issue.number, label.name);
+  }
+}
+
+export async function removeAllPriorityLabels(context: Context, labels: { name: string }[]) {
+  const priorityLabels = labels.filter((label) => PRIORITY_REGEX.test(label.name));
+  if (priorityLabels.length === 0) return;
+
+  for (const label of priorityLabels) {
+    await unassignLabelFromIssue(context, context.payload.repository.owner.login, context.payload.repository.name, context.payload.issue.number, label.name);
+  }
+}
+
+export async function removeAllPricingLabels(context: Context, labels: { name: string }[]) {
+  const pricingLabels = labels.filter((label) => label.name.startsWith("Price:"));
+  if (pricingLabels.length === 0) return;
+
+  for (const label of pricingLabels) {
+    await unassignLabelFromIssue(context, context.payload.repository.owner.login, context.payload.repository.name, context.payload.issue.number, label.name);
   }
 }

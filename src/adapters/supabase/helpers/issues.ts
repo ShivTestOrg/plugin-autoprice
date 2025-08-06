@@ -29,6 +29,7 @@ interface FindSimilarIssuesParams {
   markdown: string;
   currentId: string;
   threshold: number;
+  count: number;
 }
 
 export class Issue extends SuperSupabase {
@@ -82,7 +83,7 @@ export class Issue extends SuperSupabase {
     }
   }
 
-  async findSimilarIssuesToMatch({ markdown, currentId, threshold }: FindSimilarIssuesParams): Promise<IssueSimilaritySearchResult[] | null> {
+  async findSimilarIssuesToMatch({ markdown, currentId, threshold, count }: FindSimilarIssuesParams): Promise<IssueSimilaritySearchResult[] | null> {
     // Create a new issue embedding
     try {
       const embedding = await this.context.adapters.voyage.embedding.createEmbedding(markdown);
@@ -90,7 +91,7 @@ export class Issue extends SuperSupabase {
         current_id: currentId,
         query_embedding: embedding,
         threshold,
-        top_k: 5,
+        top_k: count,
       });
       if (error) {
         this.context.logger.error("Error finding similar issues", {

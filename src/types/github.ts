@@ -11,6 +11,7 @@ export type GraphQlFetchPriorities = {
   node?: {
     title?: string;
     number: string;
+    state: "OPEN" | "CLOSED";
     repository?: {
       name: string;
       owner: {

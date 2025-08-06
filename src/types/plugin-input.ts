@@ -7,27 +7,41 @@ export const pluginSettingsSchema = T.Object(
         {
           excludeRepos: T.Array(T.String(), {
             examples: ["repo-name", "no-owner-required"],
-            description: "List of repositories to exclude from being updated",
+            description: "List of repositories to exclude from global price updates.",
           }),
         },
-        { description: "Updates all price labels across all tasks based on `baseRateMultiplier` changes within the config file." }
+        {
+          description: "Updates all price labels globally when `baseRateMultiplier` changes in the config file.",
+        }
       )
     ),
     maxSimilarIssues: T.Integer({
       examples: [1, 5],
       default: 5,
-      description: "Maximum number of similar issues for modifications.",
+      description: "The maximum number of similar issues to consider for modification.",
     }),
     elevatedPriorityLabel: T.String({
       default: "Boosted",
-      description: "Label Name to identify boosted priority issues,",
+      description: "Label for identifying issues with elevated priority.",
     }),
-    priorityMultiplier: T.Integer({
+    crossLinkedIssueBoost: T.Boolean({
+      default: false,
+      description: "Enable boosting for issues that are cross-linked across repositories within the same organization.",
+    }),
+    priorityMultiplier: T.Number({
       examples: [1.5, 1.2, 1.1],
       default: 1.1,
-      description: "Multiplier applied to prioritize similar issues.",
+      description: "Multiplier used to prioritize similar issues.",
     }),
-    basePriceMultiplier: T.Number({ examples: [1.5], default: 1, description: "The base price multiplier for all tasks" }),
+    priorityMultiplierDebug: T.Boolean({
+      default: false,
+      description: "Enable debug comments for boosted linked issues.",
+    }),
+    basePriceMultiplier: T.Number({
+      examples: [1.5],
+      default: 1,
+      description: "Base multiplier applied to all task prices.",
+    }),
   },
   { default: {} }
 );

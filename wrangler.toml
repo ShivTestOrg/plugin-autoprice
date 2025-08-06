@@ -10,3 +10,6 @@ enabled = true
 
 [version_metadata]
 binding = "CLOUDFLARE_VERSION_METADATA"
+
+[dev]
+ip = "127.0.0.1"

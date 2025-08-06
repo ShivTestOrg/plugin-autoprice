@@ -1,10 +1,13 @@
-import { addLabelToIssue, clearAllPriceLabelsOnIssue, createLabel } from "../shared/label";
+import { addLabelToIssue, clearAllPriceLabelsOnIssue, createLabel, findLabels, removeAllPricingLabels } from "../shared/label";
 import { Context } from "../types/context";
 import { convertHoursLabel, getPricing, getPriorityTime, PriorityTimeEstimate } from "./get-priority-time";
 interface PricingResult {
   timeLabelValue: number;
   priorityLabel: string;
 }
+
+export const PRIORITY_REGEX = /^Priority:\s*(\d+)/i;
+export const TIME_REGEX = /^Time:\s*(\d+(\.\d+)?)\s*(minute|hour|day|week|month)s?/i;
 
 export async function onIssueCreatePricingHandler(context: Context<"issues.opened">): Promise<void> {
   const issue = getIssueFromPayload(context);
@@ -13,46 +16,110 @@ export async function onIssueCreatePricingHandler(context: Context<"issues.opene
   }
   await clearAllPriceLabelsOnIssue(context);
   const estimate = await fetchAiEstimates(context);
-  const pricingResult = await generatePricingLabels(context, estimate);
-  await setPrice(context, pricingResult);
+  await generateTimeLabel(context, estimate);
+  await generatePriorityLabel(context, estimate);
 }
 
 export async function onIssueEditPricingHandler(context: Context<"issues.edited">) {
-  const { label, sender } = context.payload;
-  if (!label || ignoreLabelChange(context, sender, label.name)) return;
-
   await clearAllPriceLabelsOnIssue(context);
   await processAiEstimation(context);
 }
 
+function convertLabelToHours(context: Context, timeLabelName: string): number {
+  const timeMatch = TIME_REGEX.exec(timeLabelName);
+
+  if (!timeMatch) {
+    context.logger.warn("Could not parse time label.", { label: timeLabelName });
+    return 0;
+  }
+
+  const value = parseFloat(timeMatch[1]);
+  const unit = timeMatch[3].toLowerCase();
+  let hours = 0;
+
+  switch (unit) {
+    case "minute":
+      hours = value / 60;
+      break;
+    case "hour":
+      hours = value;
+      break;
+    case "day":
+      hours = value * 24;
+      break;
+    case "week":
+      hours = value * 24 * 7;
+      break;
+    case "month":
+      hours = value * 24 * 30;
+      break;
+    default:
+      context.logger.warn(`Unknown time unit: ${unit}`, { unit });
+      break;
+  }
+  return hours;
+}
+
+export async function onIssuePriorityLabelChangeHandler(context: Context<"issues.labeled" | "issues.unlabeled">): Promise<void> {
+  const label = context.payload.label;
+
+  if (label?.name.startsWith("Price:") || label?.name === context.config.elevatedPriorityLabel) {
+    context.logger.info("Ignoring event caused by a Price label change.");
+    return;
+  }
+
+  const labels = context.payload.issue?.labels ?? [];
+  const priorityLabel = findLabels(labels, PRIORITY_REGEX);
+  const timeLabel = findLabels(labels, TIME_REGEX);
+
+  if (priorityLabel && timeLabel && label) {
+    context.logger.debug("Priority label and time label found, setting price.");
+
+    if (PRIORITY_REGEX.test(label.name) || TIME_REGEX.test(label.name)) {
+      const match = PRIORITY_REGEX.exec(priorityLabel.name);
+      const priorityValue = match?.[1] ?? "0";
+
+      const timeValueInHours = convertLabelToHours(context, timeLabel.name);
+
+      await removeAllPricingLabels(context, labels);
+      context.logger.info(`Setting price with priority: ${priorityValue} and time: ${timeValueInHours} hours`);
+
+      await setPrice(context, {
+        timeLabelValue: timeValueInHours,
+        priorityLabel: priorityValue,
+      });
+    }
+  } else {
+    context.logger.info("No priority or time label found, skipping price setting.");
+  }
+}
+
 async function setPrice(context: Context, priceLabels: PricingResult, currency: string = "USD") {
   const { logger } = context;
-  await clearAllPriceLabelsOnIssue(context);
   const priceLabelName = `Price: ${getPricing(context.config.basePriceMultiplier, priceLabels.timeLabelValue, priceLabels.priorityLabel)} ${currency}`;
   logger.debug(`Setting price label: "${priceLabelName}"`);
   await createAndAddLabel(context, priceLabelName);
 }
 
-async function generatePricingLabels(context: Context, estimate: PriorityTimeEstimate): Promise<PricingResult> {
+async function generateTimeLabel(context: Context, estimate: PriorityTimeEstimate): Promise<number> {
   const { logger } = context;
-  logger.debug("Estimating both time and priority with AI.");
-
-  const { time: timeString, priority } = estimate;
-  const timeInHours = parseFloat(timeString);
-  const timeLabel = convertHoursLabel(timeString);
-
-  const priorityLabel = `Priority: ${priority}`;
+  const timeInHours = parseFloat(estimate.time);
+  const timeLabel = convertHoursLabel(estimate.time);
 
   logger.debug(`AI estimated time: ${timeInHours} hours. Creating label: "${timeLabel}"`);
   await createAndAddLabel(context, timeLabel);
 
-  logger.debug(`AI estimated priority: "${priorityLabel}". Creating label.`);
-  await addLabelToIssue(context, priorityLabel);
+  return timeInHours;
+}
 
-  return {
-    timeLabelValue: timeInHours,
-    priorityLabel,
-  };
+async function generatePriorityLabel(context: Context, estimate: PriorityTimeEstimate): Promise<string> {
+  const { logger } = context;
+  const priorityLabel = `Priority: ${estimate.priority}`;
+
+  logger.debug(`AI estimated priority: "${priorityLabel}". Creating label.`);
+  await createAndAddLabel(context, priorityLabel);
+
+  return priorityLabel;
 }
 
 async function fetchAiEstimates(context: Context): Promise<PriorityTimeEstimate> {
@@ -78,20 +145,18 @@ async function fetchAiEstimates(context: Context): Promise<PriorityTimeEstimate>
 }
 
 async function createAndAddLabel(context: Context, labelName: string) {
-  await createLabel(context, labelName);
+  try {
+    await createLabel(context, labelName);
+  } catch (error: unknown) {
+    const err = error as Error;
+    if (err && err.message && err.message.includes("already exists")) {
+      context.logger.info(`Label "${labelName}" already exists. Skipping creation.`);
+    } else {
+      throw error;
+    }
+  }
+  context.logger.info(`Adding label "${labelName}" to the issue.`);
   await addLabelToIssue(context, labelName);
-}
-
-function ignoreLabelChange(context: Context, sender: Context["payload"]["sender"], labelName: string): boolean {
-  if (context.eventName == "issues.opened" && sender?.type === "Bot") {
-    context.logger.debug(`Ignoring label change event for "${labelName}" on issue opened.`);
-    return true;
-  }
-  if (sender?.type === "Bot" && labelName && (labelName.startsWith("Time:") || labelName.startsWith("Priority:") || labelName.startsWith("Price:"))) {
-    context.logger.info(`Ignoring label change event for "${labelName}" from bot.`);
-    return true;
-  }
-  return false;
 }
 
 function getIssueFromPayload(context: Context) {
@@ -105,9 +170,11 @@ function getIssueFromPayload(context: Context) {
 
 async function processAiEstimation(context: Context): Promise<void> {
   const estimate = await fetchAiEstimates(context);
-  const priceResult = await generatePricingLabels(context, estimate);
-
-  if (priceResult) {
-    await setPrice(context, priceResult);
-  }
+  const timeLabelValue = await generateTimeLabel(context, estimate);
+  const priorityLabel = await generatePriorityLabel(context, estimate);
+  const priceResult: PricingResult = {
+    timeLabelValue,
+    priorityLabel,
+  };
+  context.logger.debug("Generated estimate", { estimate, priceResult });
 }

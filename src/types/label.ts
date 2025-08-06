@@ -3,6 +3,6 @@ export type FetchedPriorities = {
   priority: string;
   issueNumber: number;
   title: string | null;
-  repository: { name: string; owner: { login: string } } | null;
+  repository: { name: string; owner: { login: string } };
   labels: { name: string }[];
 };
